@@ -14,6 +14,18 @@ class PDFDarkModeConverter:
         self.root.geometry("800x600")
         self.root.configure(bg="#2B2B2B")
         
+        # Set window icon - tries multiple possible icon files
+        icon_files = ["favicon.ico", "app_icon.ico", "icon.ico"]
+        for icon_file in icon_files:
+            try:
+                if os.path.exists(icon_file):
+                    self.root.iconbitmap(icon_file)
+                    print(f"✓ Using icon: {icon_file}")
+                    break
+            except Exception as e:
+                print(f"Could not load {icon_file}: {e}")
+                continue
+        
         # Configure dark theme colors
         self.colors = {
             'bg': '#2B2B2B',
