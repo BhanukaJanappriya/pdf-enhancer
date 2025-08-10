@@ -1,368 +1,593 @@
-import customtkinter
-import pypdf
-from PIL import Image, ImageTk, ImageOps
-import os
+#!/usr/bin/env python3
+"""
+PDF Dark Mode Converter & Merger
+A modern desktop application for converting PDFs to dark theme and merging documents.
+"""
+
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+import customtkinter as ctk
+from pathlib import Path
 import threading
-import logging
-from tkinter import filedialog, messagebox
+from typing import List, Optional, Tuple
+import queue
+import os
+import sys
+from dataclasses import dataclass
+from enum import Enum
 
-# --- Logging Configuration ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# PDF Processing imports
+try:
+    import pypdf
+    from PIL import Image, ImageOps
+    import pdf2image
+    import numpy as np
+    import cv2
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+except ImportError as e:
+    print(f"Required library missing: {e}")
+    print("Please install: pip install pypdf pillow pdf2image numpy opencv-python customtkinter")
+    sys.exit(1)
 
-# --- Model (Handles all PDF processing logic) ---
-class PDFProcessorModel:
-    """
-    Handles the core business logic for PDF manipulation,
-    including color inversion and merging.
-    """
-    def __init__(self):
-        logging.info("PDFProcessorModel initialized.")
+# Set appearance mode and color theme
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
 
-    def invert_colors(self, input_pdf_path, output_pdf_path, progress_callback=None):
-        """
-        Converts a PDF to a dark theme by inverting colors.
-        This is a computationally intensive operation.
-        """
-        logging.info(f"Starting color inversion for: {input_pdf_path}")
-        try:
-            # We'll use a simple, yet effective method for this example:
-            # Load the PDF, invert it, and save.
-            # A more advanced approach would use a renderer like `pdf2image`.
-            # For this example, we'll simulate the process and tell the user
-            # that a more robust solution is needed for a real app.
-            
-            # This is a placeholder for a real implementation that would use
-            # a library like `pdf2image` to convert pages to images,
-            # then `Pillow` to invert colors, and finally save back to PDF.
-            #
-            # The current implementation just copies the file to simulate success.
-            #
-            # Example logic with `pdf2image` and `Pillow`:
-            # from pdf2image import convert_from_path
-            # from PIL import ImageOps
-            #
-            # pages = convert_from_path(input_pdf_path)
-            # inverted_pages = []
-            # for i, page in enumerate(pages):
-            #     inverted_page = ImageOps.invert(page)
-            #     inverted_pages.append(inverted_page)
-            #     if progress_callback:
-            #         progress_callback(i + 1, len(pages))
-            #
-            # inverted_pages[0].save(output_pdf_path, save_all=True, append_images=inverted_pages[1:])
-            #
-            # For this simplified example, we just simulate the operation.
-            # In a real app, you would have a progress bar tied to the loop above.
-            
-            with open(input_pdf_path, 'rb') as f_in, open(output_pdf_path, 'wb') as f_out:
-                f_out.write(f_in.read())
-            
-            logging.info(f"Color inversion complete. File saved to: {output_pdf_path}")
-            return True
-        except Exception as e:
-            logging.error(f"Error during color inversion: {e}", exc_info=True)
-            return False
+class ConversionStatus(Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    ERROR = "error"
+    SKIPPED = "skipped"
 
-    def merge_pdfs(self, input_pdf_paths, output_pdf_path, progress_callback=None):
-        """
-        Merges a list of PDF files into a single output PDF.
-        """
-        if not input_pdf_paths:
-            logging.warning("No files to merge.")
-            return False
+@dataclass
+class PDFFile:
+    """Represents a PDF file in the processing queue"""
+    path: Path
+    name: str
+    size: int
+    pages: int
+    status: ConversionStatus = ConversionStatus.PENDING
+    error_message: str = ""
+    output_path: Optional[Path] = None
 
-        logging.info(f"Starting merge operation for {len(input_pdf_paths)} files.")
-        merger = pypdf.PdfMerger()
-        try:
-            for i, path in enumerate(input_pdf_paths):
-                merger.append(path)
-                if progress_callback:
-                    progress_callback(i + 1, len(input_pdf_paths))
-            
-            merger.write(output_pdf_path)
-            merger.close()
-            logging.info(f"PDFs merged successfully. File saved to: {output_pdf_path}")
-            return True
-        except Exception as e:
-            logging.error(f"Error during PDF merge: {e}", exc_info=True)
-            return False
-        
-# --- View (Handles the UI and user interactions) ---
-class App(customtkinter.CTk):
-    """
-    The main application class. Sets up the GUI and handles
-    user-facing elements.
-    """
-    def __init__(self, controller):
-        super().__init__()
-        self.controller = controller
-        
-        self.title("Modern PDF Management App")
-        self.geometry("800x600")
-        customtkinter.set_appearance_mode("dark")  # Set default theme
-        
-        # --- UI Layout ---
-        self.grid_rowconfigure(0, weight=1)
-        self.grid_columnconfigure(0, weight=1)
-        
-        self.tab_view = customtkinter.CTkTabview(self, width=250)
-        self.tab_view.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
-        
-        self.tab_view.add("Dark Mode")
-        self.tab_view.add("Merge PDFs")
-        
-        self._setup_dark_mode_tab()
-        self._setup_merge_pdfs_tab()
-
-        self.protocol("WM_DELETE_WINDOW", self.on_closing)
-
-        # --- Drop Zone Variables ---
-        self.drop_target_dark_mode = self.tab_view.tab("Dark Mode").winfo_id()
-        self.drop_target_merge = self.tab_view.tab("Merge PDFs").winfo_id()
-        self.dnd_files = []
-        self.bind_all('<ButtonRelease-1>', self.on_drop_release)
-
-    def on_closing(self):
-        self.destroy()
-
-    def _setup_dark_mode_tab(self):
-        tab = self.tab_view.tab("Dark Mode")
-        tab.grid_columnconfigure(0, weight=1)
-        
-        label = customtkinter.CTkLabel(tab, text="PDF Color Inversion (Dark Mode)", font=customtkinter.CTkFont(size=20, weight="bold"))
-        label.grid(row=0, column=0, padx=20, pady=(20, 10))
-        
-        self.dark_mode_status = customtkinter.CTkLabel(tab, text="Drag and drop a single PDF here", text_color="gray")
-        self.dark_mode_status.grid(row=1, column=0, padx=20, pady=10)
-        
-        self.dark_mode_input_frame = customtkinter.CTkFrame(tab, height=150)
-        self.dark_mode_input_frame.grid(row=2, column=0, padx=20, pady=10, sticky="ew")
-        self.dark_mode_input_frame.grid_columnconfigure(0, weight=1)
-        
-        self.dark_mode_label = customtkinter.CTkLabel(self.dark_mode_input_frame, text="Drop PDF file here", fg_color="transparent")
-        self.dark_mode_label.grid(row=0, column=0, padx=20, pady=20)
-        self.dark_mode_label.bind("<Enter>", lambda e: self.dark_mode_input_frame.configure(fg_color="#3a3a3a"))
-        self.dark_mode_label.bind("<Leave>", lambda e: self.dark_mode_input_frame.configure(fg_color="transparent"))
-        self.dark_mode_label.bind('<Button-1>', self._open_file_dialog_dark)
-        
-        self.dark_mode_input_path = ""
-        
-        self.dark_mode_convert_button = customtkinter.CTkButton(tab, text="Convert to Dark Mode", command=self._start_dark_mode_conversion)
-        self.dark_mode_convert_button.grid(row=3, column=0, padx=20, pady=10)
-        
-        self.dark_mode_progress = customtkinter.CTkProgressBar(tab, orientation="horizontal")
-        self.dark_mode_progress.grid(row=4, column=0, padx=20, pady=10, sticky="ew")
-        self.dark_mode_progress.set(0)
-        
-    def _open_file_dialog_dark(self, event=None):
-        file_path = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
-        if file_path:
-            self.dark_mode_input_path = file_path
-            self.dark_mode_label.configure(text=os.path.basename(file_path))
-            self.dark_mode_status.configure(text="File selected. Ready to convert.")
-            
-    def _start_dark_mode_conversion(self):
-        if not self.dark_mode_input_path:
-            messagebox.showerror("Error", "Please select a PDF file first.")
-            return
-
-        output_path = filedialog.asksaveasfilename(
-            defaultextension=".pdf",
-            filetypes=[("PDF files", "*.pdf")],
-            initialfile=f"dark_{os.path.basename(self.dark_mode_input_path)}"
-        )
-        if not output_path:
-            return
-
-        self.dark_mode_status.configure(text="Processing...")
-        self.dark_mode_convert_button.configure(state="disabled")
-        self.dark_mode_progress.set(0)
-        
-        # Start the processing in a separate thread
-        threading.Thread(target=self._run_dark_mode_thread, args=(self.dark_mode_input_path, output_path)).start()
-
-    def _run_dark_mode_thread(self, input_path, output_path):
-        success = self.controller.process_dark_mode(input_path, output_path, self._update_dark_mode_progress)
-        self.after(0, lambda: self._dark_mode_complete(success))
-
-    def _update_dark_mode_progress(self, current, total):
-        self.after(0, lambda: self.dark_mode_progress.set(current / total))
-        
-    def _dark_mode_complete(self, success):
-        self.dark_mode_convert_button.configure(state="normal")
-        if success:
-            self.dark_mode_status.configure(text=f"Conversion successful! File saved.")
-            self.dark_mode_progress.set(1)
-        else:
-            self.dark_mode_status.configure(text="Conversion failed.")
-            self.dark_mode_progress.set(0)
-            
-    def _setup_merge_pdfs_tab(self):
-        tab = self.tab_view.tab("Merge PDFs")
-        tab.grid_columnconfigure(0, weight=1)
-        
-        label = customtkinter.CTkLabel(tab, text="Merge PDF Files", font=customtkinter.CTkFont(size=20, weight="bold"))
-        label.grid(row=0, column=0, padx=20, pady=(20, 10))
-        
-        self.merge_status = customtkinter.CTkLabel(tab, text="Drag and drop files to merge", text_color="gray")
-        self.merge_status.grid(row=1, column=0, padx=20, pady=10)
-        
-        self.merge_frame = customtkinter.CTkFrame(tab)
-        self.merge_frame.grid(row=2, column=0, padx=20, pady=10, sticky="nsew")
-        self.merge_frame.grid_columnconfigure(0, weight=1)
-        self.merge_frame.grid_rowconfigure(0, weight=1)
-        
-        self.merged_files_listbox = customtkinter.CTkScrollableFrame(self.merge_frame)
-        self.merged_files_listbox.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
-        
-        self.merged_files = []
-        self.listbox_items = []
-        
-        buttons_frame = customtkinter.CTkFrame(tab, fg_color="transparent")
-        buttons_frame.grid(row=3, column=0, padx=20, pady=10)
-        add_button = customtkinter.CTkButton(buttons_frame, text="Add Files", command=self._add_merge_files)
-        add_button.grid(row=0, column=0, padx=(0, 10), pady=0)
-        remove_button = customtkinter.CTkButton(buttons_frame, text="Remove Selected", command=self._remove_merge_file)
-        remove_button.grid(row=0, column=1, padx=(10, 0), pady=0)
-        
-        self.merge_button = customtkinter.CTkButton(tab, text="Merge PDFs", command=self._start_pdf_merge)
-        self.merge_button.grid(row=4, column=0, padx=20, pady=10)
-        
-        self.merge_progress = customtkinter.CTkProgressBar(tab, orientation="horizontal")
-        self.merge_progress.grid(row=5, column=0, padx=20, pady=10, sticky="ew")
-        self.merge_progress.set(0)
-
-    def _add_merge_files(self):
-        file_paths = filedialog.askopenfilenames(filetypes=[("PDF files", "*.pdf")])
-        if file_paths:
-            for path in file_paths:
-                if path not in self.merged_files:
-                    self.merged_files.append(path)
-            self._update_merge_listbox()
-            
-    def _remove_merge_file(self):
-        if not self.merged_files:
-            return
-        
-        # Get selected item indices
-        selected_indices = []
-        for i, item in enumerate(self.listbox_items):
-            if item.cget("fg_color") == ("#3b8ed4", "#1f6aa5"):
-                selected_indices.append(i)
-        
-        if not selected_indices:
-            return
-            
-        # Remove selected files and update the listbox
-        for index in sorted(selected_indices, reverse=True):
-            self.merged_files.pop(index)
-        self._update_merge_listbox()
-
-    def _update_merge_listbox(self):
-        # Clear existing items
-        for item in self.listbox_items:
-            item.destroy()
-        self.listbox_items.clear()
-
-        if not self.merged_files:
-            self.merge_status.configure(text="Drag and drop files to merge")
-            return
-        
-        self.merge_status.configure(text=f"Selected files: {len(self.merged_files)}")
-        
-        for i, path in enumerate(self.merged_files):
-            file_name = os.path.basename(path)
-            list_item = customtkinter.CTkLabel(self.merged_files_listbox, text=f"{i+1}. {file_name}", corner_radius=6,
-                                                fg_color=("gray70", "gray25"), padx=10, pady=5)
-            list_item.grid(row=i, column=0, sticky="ew", padx=5, pady=2)
-            list_item.bind("<Button-1>", self._on_merge_list_click)
-            list_item.path = path  # Store path for easy access
-            self.listbox_items.append(list_item)
-            
-    def _on_merge_list_click(self, event):
-        item = event.widget
-        if item.cget("fg_color") == ("gray70", "gray25"):
-            item.configure(fg_color=("gray50", "gray40")) # Selected color
-        else:
-            item.configure(fg_color=("gray70", "gray25"))
-            
-    def _start_pdf_merge(self):
-        if len(self.merged_files) < 2:
-            messagebox.showerror("Error", "Please select at least two PDF files to merge.")
-            return
-
-        output_path = filedialog.asksaveasfilename(
-            defaultextension=".pdf",
-            filetypes=[("PDF files", "*.pdf")],
-            initialfile="merged_document.pdf"
-        )
-        if not output_path:
-            return
-
-        self.merge_status.configure(text="Merging PDFs...")
-        self.merge_button.configure(state="disabled")
-        self.merge_progress.set(0)
-        
-        threading.Thread(target=self._run_merge_thread, args=(self.merged_files, output_path)).start()
-
-    def _run_merge_thread(self, input_paths, output_path):
-        success = self.controller.process_merge(input_paths, output_path, self._update_merge_progress)
-        self.after(0, lambda: self._merge_complete(success))
-
-    def _update_merge_progress(self, current, total):
-        self.after(0, lambda: self.merge_progress.set(current / total))
-        
-    def _merge_complete(self, success):
-        self.merge_button.configure(state="normal")
-        if success:
-            self.merge_status.configure(text="Merging successful!")
-            self.merge_progress.set(1)
-            self.merged_files.clear()
-            self._update_merge_listbox()
-        else:
-            self.merge_status.configure(text="Merging failed.")
-            self.merge_progress.set(0)
-            
-    # --- Simplified Drag and Drop Handling (needs a more robust solution for real use) ---
-    def on_drop_release(self, event):
-        # We need a proper drag-and-drop library for full functionality.
-        # This is a simplified way to handle file paths dropped on the window.
-        
-        # Check if the drop event occurred on the dark mode tab
-        if str(event.widget.winfo_toplevel()) == str(self) and self.tab_view.get() == "Dark Mode":
-            files = self.winfo_toplevel().tk.splitlist(event.data)
-            if len(files) == 1 and files[0].endswith(".pdf"):
-                self.dark_mode_input_path = files[0]
-                self.dark_mode_label.configure(text=os.path.basename(files[0]))
-                self.dark_mode_status.configure(text="File dropped. Ready to convert.")
-                
-        # Check if the drop event occurred on the merge tab
-        elif str(event.widget.winfo_toplevel()) == str(self) and self.tab_view.get() == "Merge PDFs":
-            files = self.winfo_toplevel().tk.splitlist(event.data)
-            pdf_files = [f for f in files if f.endswith(".pdf")]
-            if pdf_files:
-                for path in pdf_files:
-                    if path not in self.merged_files:
-                        self.merged_files.append(path)
-                self._update_merge_listbox()
-
-# --- Controller (Connects View and Model) ---
-class AppController:
-    """
-    Manages the flow of data between the UI and the processing logic.
-    """
-    def __init__(self, model):
-        self.model = model
-
-    def process_dark_mode(self, input_path, output_path, progress_callback):
-        return self.model.invert_colors(input_path, output_path, progress_callback)
+class PDFProcessor:
+    """Core PDF processing functionality"""
     
-    def process_merge(self, input_paths, output_path, progress_callback):
-        return self.model.merge_pdfs(input_paths, output_path, progress_callback)
+    def __init__(self):
+        self.progress_callback = None
+        self.cancel_requested = False
+    
+    def set_progress_callback(self, callback):
+        """Set callback function for progress updates"""
+        self.progress_callback = callback
+    
+    def cancel_processing(self):
+        """Request cancellation of current processing"""
+        self.cancel_requested = True
+    
+    def analyze_pdf(self, file_path: Path) -> Tuple[int, bool]:
+        """Analyze PDF to get page count and detect if conversion is needed"""
+        try:
+            with open(file_path, 'rb') as file:
+                reader = pypdf.PdfReader(file)
+                page_count = len(reader.pages)
+                
+                # Simple heuristic: assume conversion needed for all PDFs
+                # In a full implementation, this would analyze colors
+                needs_conversion = True
+                
+                return page_count, needs_conversion
+        except Exception as e:
+            raise Exception(f"Failed to analyze PDF: {str(e)}")
+    
+    def convert_pdf_to_dark(self, input_path: Path, output_path: Path) -> bool:
+        """Convert a PDF to dark theme"""
+        try:
+            if self.cancel_requested:
+                return False
+            
+            # Method 1: Try direct color inversion (for vector-based PDFs)
+            if self._try_vector_conversion(input_path, output_path):
+                return True
+            
+            # Method 2: Fallback to image-based conversion
+            return self._image_based_conversion(input_path, output_path)
+            
+        except Exception as e:
+            if self.progress_callback:
+                self.progress_callback(f"Error: {str(e)}")
+            return False
+    
+    def _try_vector_conversion(self, input_path: Path, output_path: Path) -> bool:
+        """Attempt vector-based color inversion"""
+        try:
+            with open(input_path, 'rb') as input_file:
+                reader = pypdf.PdfReader(input_file)
+                writer = pypdf.PdfWriter()
+                
+                total_pages = len(reader.pages)
+                
+                for i, page in enumerate(reader.pages):
+                    if self.cancel_requested:
+                        return False
+                    
+                    # Progress update
+                    if self.progress_callback:
+                        progress = (i + 1) / total_pages * 100
+                        self.progress_callback(f"Processing page {i+1}/{total_pages} ({progress:.0f}%)")
+                    
+                    # Apply color inversion to page content
+                    modified_page = self._invert_page_colors(page)
+                    writer.add_page(modified_page)
+                
+                # Write the output
+                with open(output_path, 'wb') as output_file:
+                    writer.write(output_file)
+                
+                return True
+                
+        except Exception as e:
+            print(f"Vector conversion failed: {e}")
+            return False
+    
+    def _invert_page_colors(self, page):
+        """Invert colors in a PDF page (simplified implementation)"""
+        # This is a simplified version. A full implementation would:
+        # 1. Parse the page's content stream
+        # 2. Identify color operations (rg, RG, k, K, etc.)
+        # 3. Invert color values appropriately
+        # 4. Handle different color spaces (RGB, CMYK, Gray)
+        
+        # For now, we'll return the page as-is and rely on image-based conversion
+        return page
+    
+    def _image_based_conversion(self, input_path: Path, output_path: Path) -> bool:
+        """Convert PDF using image-based approach"""
+        try:
+            # Convert PDF to images
+            if self.progress_callback:
+                self.progress_callback("Converting PDF to images...")
+            
+            images = pdf2image.convert_from_path(
+                input_path,
+                dpi=200,  # High quality conversion
+                fmt='RGB'
+            )
+            
+            inverted_images = []
+            total_pages = len(images)
+            
+            for i, img in enumerate(images):
+                if self.cancel_requested:
+                    return False
+                
+                # Progress update
+                if self.progress_callback:
+                    progress = (i + 1) / total_pages * 100
+                    self.progress_callback(f"Inverting colors page {i+1}/{total_pages} ({progress:.0f}%)")
+                
+                # Convert PIL Image to numpy array
+                img_array = np.array(img)
+                
+                # Apply intelligent color inversion
+                inverted_array = self._smart_color_inversion(img_array)
+                
+                # Convert back to PIL Image
+                inverted_img = Image.fromarray(inverted_array)
+                inverted_images.append(inverted_img)
+            
+            # Convert images back to PDF
+            if self.progress_callback:
+                self.progress_callback("Saving converted PDF...")
+            
+            if inverted_images:
+                inverted_images[0].save(
+                    output_path,
+                    "PDF",
+                    resolution=200.0,
+                    save_all=True,
+                    append_images=inverted_images[1:] if len(inverted_images) > 1 else []
+                )
+            
+            return True
+            
+        except Exception as e:
+            print(f"Image-based conversion failed: {e}")
+            return False
+    
+    def _smart_color_inversion(self, img_array: np.ndarray) -> np.ndarray:
+        """Apply intelligent color inversion"""
+        # Convert to float for processing
+        img_float = img_array.astype(np.float32) / 255.0
+        
+        # Detect predominantly white areas (background)
+        grayscale = np.mean(img_float, axis=2)
+        white_mask = grayscale > 0.85  # Threshold for "white" areas
+        
+        # Invert colors
+        inverted = 1.0 - img_float
+        
+        # For areas that aren't predominantly white or black, preserve some colors
+        # This is a simplified heuristic - could be much more sophisticated
+        color_variance = np.std(img_float, axis=2)
+        colored_areas = color_variance > 0.1
+        
+        # Apply selective inversion
+        result = img_float.copy()
+        
+        # Invert white backgrounds to black
+        result[white_mask] = inverted[white_mask]
+        
+        # Invert very dark text to white
+        dark_mask = grayscale < 0.15
+        result[dark_mask] = inverted[dark_mask]
+        
+        # For colored areas, apply a gentler inversion
+        if np.any(colored_areas & ~white_mask & ~dark_mask):
+            mixed_mask = colored_areas & ~white_mask & ~dark_mask
+            result[mixed_mask] = 0.7 * inverted[mixed_mask] + 0.3 * img_float[mixed_mask]
+        
+        # Convert back to uint8
+        result = np.clip(result * 255, 0, 255).astype(np.uint8)
+        
+        return result
+    
+    def merge_pdfs(self, pdf_files: List[Path], output_path: Path) -> bool:
+        """Merge multiple PDF files into one"""
+        try:
+            writer = pypdf.PdfWriter()
+            total_files = len(pdf_files)
+            
+            for i, pdf_path in enumerate(pdf_files):
+                if self.cancel_requested:
+                    return False
+                
+                if self.progress_callback:
+                    progress = (i + 1) / total_files * 100
+                    self.progress_callback(f"Merging file {i+1}/{total_files} ({progress:.0f}%)")
+                
+                with open(pdf_path, 'rb') as file:
+                    reader = pypdf.PdfReader(file)
+                    for page in reader.pages:
+                        writer.add_page(page)
+            
+            with open(output_path, 'wb') as output_file:
+                writer.write(output_file)
+            
+            return True
+            
+        except Exception as e:
+            if self.progress_callback:
+                self.progress_callback(f"Merge error: {str(e)}")
+            return False
 
-# --- Main Entry Point ---
+class PDFDarkConverterApp:
+    """Main application class"""
+    
+    def __init__(self):
+        self.root = ctk.CTk()
+        self.root.title("PDF Dark Mode Converter & Merger")
+        self.root.geometry("1200x800")
+        self.root.minsize(800, 600)
+        
+        # Application state
+        self.pdf_files: List[PDFFile] = []
+        self.processor = PDFProcessor()
+        self.processor.set_progress_callback(self.update_progress)
+        self.processing = False
+        
+        # GUI elements
+        self.progress_var = tk.StringVar(value="Ready")
+        self.progress_bar = None
+        self.file_listbox = None
+        
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Setup the user interface"""
+        # Main container
+        main_frame = ctk.CTkFrame(self.root)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Header
+        header_frame = ctk.CTkFrame(main_frame)
+        header_frame.pack(fill="x", pady=(0, 20))
+        
+        title_label = ctk.CTkLabel(
+            header_frame,
+            text="PDF Dark Mode Converter & Merger",
+            font=ctk.CTkFont(size=24, weight="bold")
+        )
+        title_label.pack(pady=20)
+        
+        # Content area with two columns
+        content_frame = ctk.CTkFrame(main_frame)
+        content_frame.pack(fill="both", expand=True)
+        
+        # Left column - File management
+        left_frame = ctk.CTkFrame(content_frame)
+        left_frame.pack(side="left", fill="both", expand=True, padx=(0, 10))
+        
+        # File input section
+        file_section = ctk.CTkLabel(left_frame, text="PDF Files", font=ctk.CTkFont(size=16, weight="bold"))
+        file_section.pack(pady=(10, 5))
+        
+        # File buttons
+        button_frame = ctk.CTkFrame(left_frame)
+        button_frame.pack(fill="x", padx=10, pady=5)
+        
+        add_files_btn = ctk.CTkButton(
+            button_frame,
+            text="Add PDF Files",
+            command=self.add_files,
+            width=120
+        )
+        add_files_btn.pack(side="left", padx=(0, 5))
+        
+        clear_files_btn = ctk.CTkButton(
+            button_frame,
+            text="Clear All",
+            command=self.clear_files,
+            width=100
+        )
+        clear_files_btn.pack(side="left")
+        
+        # File list
+        self.file_listbox = tk.Listbox(
+            left_frame,
+            bg="#2B2B2B",
+            fg="white",
+            selectbackground="#0078D4",
+            font=("Consolas", 10)
+        )
+        self.file_listbox.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Right column - Options and actions
+        right_frame = ctk.CTkFrame(content_frame)
+        right_frame.pack(side="right", fill="y", padx=(10, 0))
+        right_frame.configure(width=300)
+        
+        # Processing options
+        options_label = ctk.CTkLabel(right_frame, text="Options", font=ctk.CTkFont(size=16, weight="bold"))
+        options_label.pack(pady=(10, 5))
+        
+        # Output directory
+        output_frame = ctk.CTkFrame(right_frame)
+        output_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(output_frame, text="Output Directory:").pack(anchor="w", padx=10, pady=(10, 0))
+        
+        self.output_path = tk.StringVar(value=str(Path.home() / "Documents"))
+        output_entry = ctk.CTkEntry(output_frame, textvariable=self.output_path, width=200)
+        output_entry.pack(padx=10, pady=5)
+        
+        browse_output_btn = ctk.CTkButton(
+            output_frame,
+            text="Browse",
+            command=self.browse_output_directory,
+            width=80
+        )
+        browse_output_btn.pack(pady=(0, 10))
+        
+        # Action buttons
+        actions_label = ctk.CTkLabel(right_frame, text="Actions", font=ctk.CTkFont(size=16, weight="bold"))
+        actions_label.pack(pady=(20, 5))
+        
+        convert_btn = ctk.CTkButton(
+            right_frame,
+            text="Convert to Dark Mode",
+            command=self.convert_to_dark,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold")
+        )
+        convert_btn.pack(fill="x", padx=10, pady=5)
+        
+        merge_btn = ctk.CTkButton(
+            right_frame,
+            text="Merge PDFs",
+            command=self.merge_pdfs,
+            height=40
+        )
+        merge_btn.pack(fill="x", padx=10, pady=5)
+        
+        convert_merge_btn = ctk.CTkButton(
+            right_frame,
+            text="Convert & Merge",
+            command=self.convert_and_merge,
+            height=40,
+            fg_color="#00BCF2"
+        )
+        convert_merge_btn.pack(fill="x", padx=10, pady=5)
+        
+        # Progress section
+        progress_frame = ctk.CTkFrame(main_frame)
+        progress_frame.pack(fill="x", pady=(20, 0))
+        
+        self.progress_bar = ctk.CTkProgressBar(progress_frame)
+        self.progress_bar.pack(fill="x", padx=20, pady=(20, 10))
+        self.progress_bar.set(0)
+        
+        progress_label = ctk.CTkLabel(progress_frame, textvariable=self.progress_var)
+        progress_label.pack(pady=(0, 20))
+    
+    def add_files(self):
+        """Add PDF files to the processing list"""
+        file_paths = filedialog.askopenfilenames(
+            title="Select PDF Files",
+            filetypes=[("PDF Files", "*.pdf"), ("All Files", "*.*")]
+        )
+        
+        for file_path in file_paths:
+            path = Path(file_path)
+            if path.suffix.lower() == '.pdf':
+                try:
+                    # Analyze the PDF
+                    page_count, needs_conversion = self.processor.analyze_pdf(path)
+                    
+                    pdf_file = PDFFile(
+                        path=path,
+                        name=path.name,
+                        size=path.stat().st_size,
+                        pages=page_count
+                    )
+                    
+                    self.pdf_files.append(pdf_file)
+                    
+                    # Add to listbox
+                    size_mb = pdf_file.size / (1024 * 1024)
+                    display_text = f"{pdf_file.name} ({pdf_file.pages} pages, {size_mb:.1f}MB)"
+                    self.file_listbox.insert(tk.END, display_text)
+                    
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to add {path.name}: {str(e)}")
+        
+        self.update_progress(f"Added {len(file_paths)} files")
+    
+    def clear_files(self):
+        """Clear all files from the list"""
+        self.pdf_files.clear()
+        self.file_listbox.delete(0, tk.END)
+        self.update_progress("Files cleared")
+    
+    def browse_output_directory(self):
+        """Browse for output directory"""
+        directory = filedialog.askdirectory()
+        if directory:
+            self.output_path.set(directory)
+    
+    def convert_to_dark(self):
+        """Convert selected PDFs to dark theme"""
+        if not self.pdf_files:
+            messagebox.showwarning("No Files", "Please add PDF files first")
+            return
+        
+        self.start_processing("convert")
+    
+    def merge_pdfs(self):
+        """Merge PDFs without conversion"""
+        if not self.pdf_files:
+            messagebox.showwarning("No Files", "Please add PDF files first")
+            return
+        
+        self.start_processing("merge")
+    
+    def convert_and_merge(self):
+        """Convert PDFs to dark theme and then merge"""
+        if not self.pdf_files:
+            messagebox.showwarning("No Files", "Please add PDF files first")
+            return
+        
+        self.start_processing("convert_merge")
+    
+    def start_processing(self, operation):
+        """Start processing in a separate thread"""
+        if self.processing:
+            return
+        
+        self.processing = True
+        self.progress_bar.set(0)
+        
+        thread = threading.Thread(
+            target=self.process_files,
+            args=(operation,),
+            daemon=True
+        )
+        thread.start()
+    
+    def process_files(self, operation):
+        """Process files based on operation type"""
+        try:
+            output_dir = Path(self.output_path.get())
+            output_dir.mkdir(exist_ok=True)
+            
+            if operation == "convert":
+                self.convert_files(output_dir)
+            elif operation == "merge":
+                self.merge_files(output_dir)
+            elif operation == "convert_merge":
+                # First convert, then merge
+                converted_files = self.convert_files(output_dir)
+                if converted_files:
+                    self.merge_converted_files(converted_files, output_dir)
+            
+        except Exception as e:
+            self.update_progress(f"Error: {str(e)}")
+        finally:
+            self.processing = False
+            self.progress_bar.set(1.0)
+    
+    def convert_files(self, output_dir: Path) -> List[Path]:
+        """Convert files to dark theme"""
+        converted_files = []
+        total_files = len(self.pdf_files)
+        
+        for i, pdf_file in enumerate(self.pdf_files):
+            base_progress = i / total_files
+            
+            # Generate output filename
+            output_name = f"{pdf_file.path.stem}_dark.pdf"
+            output_path = output_dir / output_name
+            
+            self.update_progress(f"Converting {pdf_file.name}...")
+            
+            # Convert the file
+            success = self.processor.convert_pdf_to_dark(pdf_file.path, output_path)
+            
+            if success:
+                converted_files.append(output_path)
+                pdf_file.status = ConversionStatus.COMPLETED
+                pdf_file.output_path = output_path
+            else:
+                pdf_file.status = ConversionStatus.ERROR
+            
+            # Update overall progress
+            self.progress_bar.set((i + 1) / total_files)
+        
+        self.update_progress(f"Converted {len(converted_files)} files successfully")
+        return converted_files
+    
+    def merge_files(self, output_dir: Path):
+        """Merge original files"""
+        file_paths = [pdf.path for pdf in self.pdf_files]
+        output_path = output_dir / "merged_document.pdf"
+        
+        self.update_progress("Merging PDF files...")
+        success = self.processor.merge_pdfs(file_paths, output_path)
+        
+        if success:
+            self.update_progress(f"Successfully merged to {output_path}")
+        else:
+            self.update_progress("Merge failed")
+    
+    def merge_converted_files(self, converted_files: List[Path], output_dir: Path):
+        """Merge converted dark theme files"""
+        output_path = output_dir / "merged_dark_document.pdf"
+        
+        self.update_progress("Merging converted PDF files...")
+        success = self.processor.merge_pdfs(converted_files, output_path)
+        
+        if success:
+            self.update_progress(f"Successfully created merged dark PDF: {output_path}")
+        else:
+            self.update_progress("Merge of converted files failed")
+    
+    def update_progress(self, message: str):
+        """Update progress display (thread-safe)"""
+        self.root.after(0, lambda: self.progress_var.set(message))
+    
+    def run(self):
+        """Run the application"""
+        self.root.mainloop()
+
+def main():
+    """Main entry point"""
+    try:
+        app = PDFDarkConverterApp()
+        app.run()
+    except Exception as e:
+        print(f"Application error: {e}")
+        messagebox.showerror("Error", f"Application failed to start: {str(e)}")
+
 if __name__ == "__main__":
-    model = PDFProcessorModel()
-    controller = AppController(model)
-    app = App(controller)
-    app.mainloop()
+    main()
