@@ -17,7 +17,7 @@ pip install PyMuPDF==1.23.14 Pillow==10.1.0 pyinstaller
 echo.
 
 echo Step 3: Building standalone executable...
-pyinstaller --onefile --windowed --name="PDF-DarkMode-Converter" --icon="app_icon.ico" main.py
+pyinstaller --onefile --windowed --name="PDF-DarkMode-Converter" --icon="app_icon.ico" app.py
 echo.
 
 echo Step 4: Cleaning up build files...
