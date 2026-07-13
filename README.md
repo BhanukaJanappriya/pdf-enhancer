@@ -1,5 +1,17 @@
 # PDF Dark Mode Converter & Merger - Complete Setup
 
+## 🧰 Tech Stack
+
+| Layer | Technology | Purpose |
+| --- | --- | --- |
+| Language | **Python 3** | Core application language |
+| GUI | **Tkinter / ttk** | Desktop window, buttons, progress bar (standard library) |
+| PDF engine | **PyMuPDF (fitz)** | Rendering pages, merging, and rasterizing for dark mode |
+| Imaging | **Pillow (PIL)** | Color inversion and header icon processing |
+| Word export | **pdf2docx** | Converting PDF files into editable `.docx` documents |
+| Concurrency | **threading** | Running conversions in the background so the UI stays responsive |
+| Packaging | **PyInstaller** | Building the standalone Windows `.exe` |
+
 ## 🎯 Using Your Own Icon
 
 ### Easy Setup with Your Favicon:
