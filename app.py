@@ -2,10 +2,25 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import fitz  # PyMuPDF
 import os
+import sys
 from pathlib import Path
 import threading
 from PIL import Image, ImageTk
 import io
+
+
+def resource_path(relative_path):
+    """Get absolute path to a bundled resource.
+
+    Works both when running from source and when frozen with PyInstaller
+    (where files live in the temporary ``sys._MEIPASS`` directory).
+    """
+    try:
+        base_path = sys._MEIPASS  # set by PyInstaller at runtime
+    except AttributeError:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
+
 
 class PDFDarkModeConverter:
     def __init__(self, root):
@@ -18,9 +33,10 @@ class PDFDarkModeConverter:
         icon_files = ["favicon.ico", "app_icon.ico", "icon.ico"]
         for icon_file in icon_files:
             try:
-                if os.path.exists(icon_file):
-                    self.root.iconbitmap(icon_file)
-                    print(f"✓ Using icon: {icon_file}")
+                icon_path = resource_path(icon_file)
+                if os.path.exists(icon_path):
+                    self.root.iconbitmap(icon_path)
+                    print(f"Using icon: {icon_path}")
                     break
             except Exception as e:
                 print(f"Could not load {icon_file}: {e}")
@@ -42,15 +58,40 @@ class PDFDarkModeConverter:
         self.setup_ui()
         
     def setup_ui(self):
+        # Header with custom app icon + title
+        header_frame = tk.Frame(self.root, bg=self.colors['bg'])
+        header_frame.pack(pady=20)
+
+        # Load a custom header icon (falls back gracefully if unavailable)
+        self.header_icon = None
+        for logo_name in ("favicon.png", "app_icon.ico", "android-chrome-192x192.png"):
+            logo_path = resource_path(logo_name)
+            if os.path.exists(logo_path):
+                try:
+                    logo_img = Image.open(logo_path).convert("RGBA")
+                    logo_img = logo_img.resize((48, 48), Image.LANCZOS)
+                    self.header_icon = ImageTk.PhotoImage(logo_img)
+                    break
+                except Exception as e:
+                    print(f"Could not load header icon {logo_name}: {e}")
+
+        if self.header_icon is not None:
+            icon_label = tk.Label(
+                header_frame,
+                image=self.header_icon,
+                bg=self.colors['bg']
+            )
+            icon_label.pack(side=tk.LEFT, padx=(0, 12))
+
         # Title
         title_label = tk.Label(
-            self.root, 
+            header_frame,
             text="PDF Dark Mode Converter & Merger",
             font=('Arial', 16, 'bold'),
             bg=self.colors['bg'],
             fg=self.colors['fg']
         )
-        title_label.pack(pady=20)
+        title_label.pack(side=tk.LEFT)
         
         # File selection frame
         file_frame = tk.Frame(self.root, bg=self.colors['bg'])
