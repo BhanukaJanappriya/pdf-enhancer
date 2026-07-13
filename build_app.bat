@@ -13,7 +13,7 @@ if not exist app_icon.ico (
 echo.
 
 echo Step 2: Installing required packages...
-pip install PyMuPDF==1.23.14 Pillow==10.1.0 pyinstaller
+pip install PyMuPDF==1.23.14 Pillow==10.1.0 pdf2docx pyinstaller
 echo.
 
 echo Step 3: Building standalone executable...

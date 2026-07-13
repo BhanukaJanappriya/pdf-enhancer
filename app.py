@@ -7,6 +7,7 @@ from pathlib import Path
 import threading
 from PIL import Image, ImageTk
 import io
+from pdf2docx import Converter
 
 
 def resource_path(relative_path):
@@ -210,6 +211,19 @@ class PDFDarkModeConverter:
             font=('Arial', 10, 'bold')
         )
         convert_merge_btn.pack(side=tk.LEFT, padx=5)
+
+        word_btn = tk.Button(
+            action_frame,
+            text="Convert to Word (.docx)",
+            command=self.convert_to_word,
+            bg='#D24726',
+            fg=self.colors['button_fg'],
+            relief=tk.FLAT,
+            padx=20,
+            pady=10,
+            font=('Arial', 10, 'bold')
+        )
+        word_btn.pack(side=tk.LEFT, padx=5)
         
     def select_files(self):
         files = filedialog.askopenfilenames(
@@ -423,6 +437,48 @@ class PDFDarkModeConverter:
                 messagebox.showerror("Error", "Failed to convert PDFs!")
                 
         threading.Thread(target=convert_and_merge_thread, daemon=True).start()
+
+    def pdf_to_docx(self, input_path, output_path):
+        """Convert a single PDF file to an editable Word (.docx) document."""
+        try:
+            cv = Converter(input_path)
+            cv.convert(output_path)  # convert all pages
+            cv.close()
+            return True
+        except Exception as e:
+            print(f"Error converting {input_path} to docx: {str(e)}")
+            return False
+
+    def convert_to_word(self):
+        if not self.pdf_files:
+            messagebox.showwarning("Warning", "Please select PDF files first!")
+            return
+
+        def convert_word_thread():
+            converted = []
+            total_files = len(self.pdf_files)
+
+            for i, pdf_file in enumerate(self.pdf_files):
+                self.progress_var.set(f"Converting {os.path.basename(pdf_file)} to Word...")
+                self.progress_bar['value'] = (i / total_files) * 100
+                self.root.update()
+
+                input_path = Path(pdf_file)
+                output_path = input_path.parent / f"{input_path.stem}.docx"
+
+                if self.pdf_to_docx(pdf_file, str(output_path)):
+                    converted.append(str(output_path))
+
+            self.progress_bar['value'] = 100
+
+            if converted:
+                self.progress_var.set(f"Word conversion complete! {len(converted)} file(s) created.")
+                messagebox.showinfo("Success", f"Converted {len(converted)} PDF(s) to Word (.docx)!")
+            else:
+                self.progress_var.set("Word conversion failed!")
+                messagebox.showerror("Error", "Failed to convert PDF(s) to Word!")
+
+        threading.Thread(target=convert_word_thread, daemon=True).start()
 
 def main():
     root = tk.Tk()
