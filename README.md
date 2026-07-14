@@ -55,15 +55,15 @@ Everything runs locally on your machine. No files are uploaded anywhere, and no 
 
 ## Features
 
-- 🌙 **Dark Mode Conversion** — inverts white backgrounds to black and dark text to light, page by page.
-- 🔗 **PDF Merging** — combine any number of PDFs into one document in the order you select.
-- ⚡ **Convert and Merge** — invert to dark mode and merge in a single action.
-- 📝 **PDF to Word (.docx)** — turn PDFs into editable Word documents powered by `pdf2docx`.
-- 📂 **Batch Processing** — queue and process multiple files at once.
-- 📊 **Live Progress** — a real time progress bar and status label for every operation.
-- 🧵 **Responsive UI** — conversions run on background threads so the window never freezes.
-- 🎨 **Custom Branding** — a dark themed interface with a custom app and window icon.
-- 💼 **Standalone Executable** — ships as a single `.exe`, no Python installation required for end users.
+- 🌙 **Dark Mode Conversion** : inverts white backgrounds to black and dark text to light, page by page.
+- 🔗 **PDF Merging** : combine any number of PDFs into one document in the order you select.
+- ⚡ **Convert and Merge** : invert to dark mode and merge in a single action.
+- 📝 **PDF to Word (.docx)** : turn PDFs into editable Word documents powered by `pdf2docx`.
+- 📂 **Batch Processing** : queue and process multiple files at once.
+- 📊 **Live Progress** : a real time progress bar and status label for every operation.
+- 🧵 **Responsive UI** : conversions run on background threads so the window never freezes.
+- 🎨 **Custom Branding** : a dark themed interface with a custom app and window icon.
+- 💼 **Standalone Executable** : ships as a single `.exe`, no Python installation required for end users.
 
 ---
 
