@@ -29,6 +29,7 @@ A lightweight Windows desktop app that batch converts PDFs to dark mode, merges 
 ## Table of Contents
 
 - [Overview](#overview)
+- [Screenshot](#screenshot)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
 - [Getting Started](#getting-started)
@@ -53,17 +54,27 @@ Everything runs locally on your machine. No files are uploaded anywhere, and no 
 
 ---
 
+## Screenshot
+
+<div align="center">
+
+<img src="img/interface.png" alt="PDF Enhancer application interface" width="700" />
+
+</div>
+
+---
+
 ## Features
 
-- 🌙 **Dark Mode Conversion** : inverts white backgrounds to black and dark text to light, page by page.
-- 🔗 **PDF Merging** : combine any number of PDFs into one document in the order you select.
-- ⚡ **Convert and Merge** : invert to dark mode and merge in a single action.
-- 📝 **PDF to Word (.docx)** : turn PDFs into editable Word documents powered by `pdf2docx`.
-- 📂 **Batch Processing** : queue and process multiple files at once.
-- 📊 **Live Progress** : a real time progress bar and status label for every operation.
-- 🧵 **Responsive UI** : conversions run on background threads so the window never freezes.
-- 🎨 **Custom Branding** : a dark themed interface with a custom app and window icon.
-- 💼 **Standalone Executable** : ships as a single `.exe`, no Python installation required for end users.
+- 🌙 **Dark Mode Conversion** — inverts white backgrounds to black and dark text to light, page by page.
+- 🔗 **PDF Merging** — combine any number of PDFs into one document in the order you select.
+- ⚡ **Convert and Merge** — invert to dark mode and merge in a single action.
+- 📝 **PDF to Word (.docx)** — turn PDFs into editable Word documents powered by `pdf2docx`.
+- 📂 **Batch Processing** — queue and process multiple files at once.
+- 📊 **Live Progress** — a real time progress bar and status label for every operation.
+- 🧵 **Responsive UI** — conversions run on background threads so the window never freezes.
+- 🎨 **Custom Branding** — a dark themed interface with a custom app and window icon.
+- 💼 **Standalone Executable** — ships as a single `.exe`, no Python installation required for end users.
 
 ---
 
@@ -163,6 +174,8 @@ pdf-enhancer/
 ├── requirements.txt        # Python dependencies
 ├── favicon.png             # Source app icon
 ├── app_icon.ico            # Window / executable icon
+├── img/
+│   └── interface.png       # Application interface screenshot (used in README)
 ├── dist/                   # Built executable (generated, git ignored)
 └── README.md
 ```
