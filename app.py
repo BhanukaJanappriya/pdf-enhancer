@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, ttk, simpledialog
 import fitz  # PyMuPDF
 import os
 import sys
@@ -224,7 +224,20 @@ class PDFDarkModeConverter:
             font=('Arial', 10, 'bold')
         )
         word_btn.pack(side=tk.LEFT, padx=5)
-        
+
+        split_btn = tk.Button(
+            action_frame,
+            text="Split / Extract Pages",
+            command=self.split_pdf,
+            bg='#8E44AD',
+            fg=self.colors['button_fg'],
+            relief=tk.FLAT,
+            padx=20,
+            pady=10,
+            font=('Arial', 10, 'bold')
+        )
+        split_btn.pack(side=tk.LEFT, padx=5)
+
     def select_files(self):
         files = filedialog.askopenfilenames(
             title="Select PDF Files",
@@ -479,6 +492,124 @@ class PDFDarkModeConverter:
                 messagebox.showerror("Error", "Failed to convert PDF(s) to Word!")
 
         threading.Thread(target=convert_word_thread, daemon=True).start()
+
+    def parse_page_ranges(self, spec, page_count):
+        """Turn a page spec like '3-8' or '1,3,5-7' into an ordered list of
+        unique zero-based page indices. Raises ValueError on invalid input."""
+        pages = []
+        for part in spec.split(','):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                if '-' in part:
+                    start_str, end_str = part.split('-', 1)
+                    start, end = int(start_str), int(end_str)
+                else:
+                    start = end = int(part)
+            except ValueError:
+                raise ValueError(
+                    f"Could not understand '{part}'. Use formats like 3-8 or 1,3,5-7."
+                )
+            if start > end:
+                start, end = end, start
+            pages.extend(range(start, end + 1))
+
+        for page in pages:
+            if page < 1 or page > page_count:
+                raise ValueError(f"Page {page} is out of range (1-{page_count}).")
+
+        seen = set()
+        result = []
+        for page in pages:
+            if page not in seen:
+                seen.add(page)
+                result.append(page - 1)  # zero-based for PyMuPDF
+
+        if not result:
+            raise ValueError("No valid pages specified.")
+        return result
+
+    def split_pdf(self):
+        if not self.pdf_files:
+            messagebox.showwarning("Warning", "Please select PDF files first!")
+            return
+
+        # Split works on a single file: use the selected list item, or the
+        # only loaded file, otherwise ask the user to pick one.
+        selection = self.file_listbox.curselection()
+        if selection:
+            target = self.pdf_files[selection[0]]
+        elif len(self.pdf_files) == 1:
+            target = self.pdf_files[0]
+        else:
+            messagebox.showwarning(
+                "Warning", "Select a single file in the list to split."
+            )
+            return
+
+        spec = simpledialog.askstring(
+            "Split / Extract Pages",
+            "Enter pages to extract (e.g. 3-8 or 1,3,5-7).\n"
+            "Leave blank to split every page into its own PDF.",
+            parent=self.root
+        )
+        if spec is None:  # user cancelled the dialog
+            return
+        spec = spec.strip()
+
+        def split_thread():
+            try:
+                doc = fitz.open(target)
+                page_count = len(doc)
+                input_path = Path(target)
+                outputs = []
+
+                if spec == "":
+                    # Split every page into its own file
+                    for i in range(page_count):
+                        self.progress_var.set(
+                            f"Splitting page {i + 1}/{page_count}..."
+                        )
+                        self.progress_bar['value'] = ((i + 1) / page_count) * 100
+                        self.root.update()
+
+                        single = fitz.open()
+                        single.insert_pdf(doc, from_page=i, to_page=i)
+                        out_path = input_path.parent / f"{input_path.stem}_page_{i + 1}.pdf"
+                        single.save(str(out_path))
+                        single.close()
+                        outputs.append(str(out_path))
+                else:
+                    # Extract the requested pages into a single file
+                    pages = self.parse_page_ranges(spec, page_count)
+                    self.progress_var.set("Extracting pages...")
+                    self.progress_bar['value'] = 50
+                    self.root.update()
+
+                    extracted = fitz.open()
+                    for page in pages:
+                        extracted.insert_pdf(doc, from_page=page, to_page=page)
+                    label = spec.replace(',', '_').replace(' ', '')
+                    out_path = input_path.parent / f"{input_path.stem}_pages_{label}.pdf"
+                    extracted.save(str(out_path))
+                    extracted.close()
+                    outputs.append(str(out_path))
+
+                doc.close()
+                self.progress_bar['value'] = 100
+                self.progress_var.set(
+                    f"Split complete! {len(outputs)} file(s) created."
+                )
+                messagebox.showinfo("Success", f"Created {len(outputs)} file(s)!")
+            except ValueError as e:
+                self.progress_var.set("Split failed!")
+                messagebox.showerror("Invalid input", str(e))
+            except Exception as e:
+                self.progress_var.set("Split failed!")
+                messagebox.showerror("Error", f"Failed to split PDF:\n{e}")
+
+        threading.Thread(target=split_thread, daemon=True).start()
 
 def main():
     root = tk.Tk()
