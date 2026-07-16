@@ -69,6 +69,7 @@ Everything runs locally on your machine. No files are uploaded anywhere, and no 
 - 🌙 **Dark Mode Conversion** — inverts white backgrounds to black and dark text to light, page by page.
 - 🔗 **PDF Merging** — combine any number of PDFs into one document in the order you select.
 - ⚡ **Convert and Merge** — invert to dark mode and merge in a single action.
+- ✂️ **Split and Extract Pages** — pull out a page range (e.g. `3-8` or `1,3,5-7`) or split every page into its own PDF.
 - 📝 **PDF to Word (.docx)** — turn PDFs into editable Word documents powered by `pdf2docx`.
 - 📂 **Batch Processing** — queue and process multiple files at once.
 - 📊 **Live Progress** — a real time progress bar and status label for every operation.
@@ -134,11 +135,14 @@ The application window opens with the custom icon, a file list, a progress bar, 
    | **Merge PDFs** | Combines the listed PDFs into one | A single PDF at the location you choose |
    | **Convert & Merge** | Inverts, then merges into one file | A single dark mode PDF at your chosen location |
    | **Convert to Word (.docx)** | Exports each PDF to an editable Word file | `<name>.docx` beside each source file |
+   | **Split / Extract Pages** | Extracts a page range or splits every page | `<name>_pages_<range>.pdf`, or one `<name>_page_N.pdf` per page |
 
 3. **Watch the progress bar** and wait for the success message.
 4. **Clear Files** resets the list whenever you want to start over.
 
 > **Tip:** After running a dark mode conversion, the merge action uses the converted files. Click *Clear Files* and reselect if you want to merge the original PDFs instead.
+
+> **Split tip:** Split works on one file at a time. Click a file in the list to select it (or load just one), then choose *Split / Extract Pages*. Enter a range like `3-8` or `1,3,5-7` to extract those pages into a single PDF, or leave the box blank to split every page into its own file.
 
 ---
 
@@ -197,7 +201,8 @@ pdf-enhancer/
 - [ ] Preserve selectable text in dark mode output
 - [ ] Drag and drop file support
 - [ ] Cross platform builds (macOS and Linux)
-- [ ] Page range selection for conversion and export
+- [x] Split and extract pages by range
+- [ ] Page range selection for dark mode conversion and Word export
 
 ---
 
